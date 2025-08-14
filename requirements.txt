@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+pydantic
+aiofiles
+python-dotenv
+openai
+python-multipart
+requests
+rapidfuzz
+numpy
+scipy
+tqdm
+timeout-decorator
+google-generativeai
+litellm
+httpx
+aiohttp
