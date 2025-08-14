@@ -1,0 +1,30 @@
+[
+    [
+        "python application.py --host localhost --port 8000 --app-name Messenger --db-folder logs",
+        "Messenger.log"
+    ],
+    [
+        "python agent.py --host localhost --port 8001 --agent-id agent1 --user-id jane_thompson --deployment-name gpt-4.1-mini",
+        "agent1.log"
+    ],
+    [
+        "python agent.py --host localhost --port 8002 --agent-id agent2 --user-id mark_evans --deployment-name gpt-4.1-mini",
+        "agent2.log"
+    ],
+    [
+        "python agent.py --host localhost --port 8003 --agent-id agent3 --user-id emily_evans --deployment-name gpt-4.1-mini",
+        "agent3.log"
+    ],
+    [
+        "python user.py --user-id jane_thompson --username Jane Thompson --app-host localhost --app-port 8000 --app-name Messenger --agent-host localhost --agent-port 8001 --agent-id agent1 --init-file data_sender.txt",
+        "data_sender.log"
+    ],
+    [
+        "python user.py --user-id mark_evans --username Mark Evans --app-host localhost --app-port 8000 --app-name Messenger --agent-host localhost --agent-port 8002 --agent-id agent2 --init-file data_subject.txt",
+        "data_subject.log"
+    ],
+    [
+        "python user.py --user-id emily_evans --username Emily Evans --app-host localhost --app-port 8000 --app-name Messenger --agent-host localhost --agent-port 8003 --agent-id agent3 --init-file data_recipient.txt",
+        "data_recipient.log"
+    ]
+]
