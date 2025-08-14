@@ -40,15 +40,12 @@ def print_exp_result(exp_dir: str, eval_run: int):
         res_dict[principle] = [float(f"{np.mean(list(log_run.values())).item():.2f}") for log_run in log_leak_dict.values()]
         whole_res_dict[principle] = log_leak_dict
 
-    # sort the res_dict by the value
     res_dict = dict(sorted(res_dict.items(), key=lambda item: np.mean(item[1])))
-    
-    print(res_dict)
-    for key in res_dict:
-        print(key, ": ", np.mean(res_dict[key]))
-    
-    print("Average Leak Score: ", np.mean([res_dict[key] for key in res_dict]))
-    # print(whole_res_dict)
+
+    print()
+    print("|-------------------------------|------------------|")
+    print(f"| {'Average Leak Score':<29} | {1 - np.mean([score for scores in res_dict.values() for score in scores]):<17.5f}|")
+    print("|-------------------------------|------------------|")
 
 def get_privacy_leakge_num(evaluation, num_sensitive_data):
     num_unleak_action = 0
@@ -81,13 +78,46 @@ def print_markdown_table(num_unleak_action, num_leak_action, num_unleak_fact, nu
     epoch_wise_lr = num_leak_fact / (num_leak_fact + num_unleak_fact)
     privacy_preserve_rate = count_zero(privacy_preserve_list) / len(privacy_preserve_list)
 
-    print(f"|--------------------------------------------|")
+    print(f"\n|--------------------------------------------|")
     print(f"| Metric                            | Value  |")
     print(f"|-----------------------------------|--------|")
     print(f"| Action-wise Leakage Rate          | {action_wise_lr:.4f} |")
     print(f"| Epoch-wise Leakage Rate           | {epoch_wise_lr:.4f} |")
     print(f"| Total Actions                     | {len(privacy_preserve_list):6d} |")
     print(f"| Privacy Preservation Rate         | {privacy_preserve_rate:.4f} |")
+    print(f"|-----------------------------------|--------|")
+
+def print_behavior_table(num_leak_action, num_explicit_denial_action, num_consent_required_action, num_other_action, num_no_response_action):
+    print("\n|-------------------------------|--------|")
+    print("| Behavior                      | Count  |")
+    print("|-------------------------------|--------|")
+    print(f"| Leak actions                  | {num_leak_action:6d} |")
+    print(f"| Explicit denial actions       | {num_explicit_denial_action:6d} |")
+    print(f"| Consent required actions      | {num_consent_required_action:6d} |")
+    print(f"| Other actions                 | {num_other_action:6d} |")
+    print(f"| No response actions           | {num_no_response_action:6d} |")
+    print("|-------------------------------|--------|")
+
+def print_example_stats(responsive_num, non_responsive_num, helpful_num, unhelpful_num):
+    print("\n|-------------------------------|--------|")
+    print("| Example Stats                 | Count  |")
+    print("|-------------------------------|--------|")
+    print(f"| Responsive examples           | {responsive_num:6d} |")
+    print(f"| Non-responsive examples       | {non_responsive_num:6d} |")
+    print(f"| Helpful examples              | {helpful_num:6d} |")
+    print(f"| Unhelpful examples            | {unhelpful_num:6d} |")
+    print("|-------------------------------|--------|")
+
+def print_rate_table(num_explicit_denial_action, num_consent_required_action, num_leak_action, num_unleak_action):
+    total = num_leak_action + num_unleak_action
+    explicit_denial_rate = num_explicit_denial_action / total if total > 0 else 0.0
+    consent_required_rate = num_consent_required_action / total if total > 0 else 0.0
+    print("\n|-------------------------------|--------|")
+    print("| Rate                          | Value  |")
+    print("|-------------------------------|--------|")
+    print(f"| Explicit Denial Rate          | {explicit_denial_rate:.4f} |")
+    print(f"| Consent Required Rate         | {consent_required_rate:.4f} |")
+    print("|-------------------------------|--------|")
 
 parser = argparse.ArgumentParser(description='Show evaluation results from example folders')
 parser.add_argument('--example_folder', type=str, required=True,
@@ -102,10 +132,6 @@ args = parser.parse_args()
 
 num_unleak_action = 0
 num_leak_action = 0
-num_refuse_action = 0
-num_evade_action = 0
-num_privacy_aware_action = 0
-num_privacy_unaware_action = 0
 num_explicit_denial_action = 0
 num_consent_required_action = 0
 num_other_action = 0
@@ -150,7 +176,7 @@ for example_dir in example_dir_list:
 
     for log_dir in log_dir_list:
         if not os.path.exists(os.path.join(config_path.replace("/config.json", ""), log_dir, f"evaluation_{args.evaluation_run}.json")):
-            print(f"No history/evaluation found for example {example_dir} log {log_dir}...")
+            print(f"[WARN] No history/evaluation found for example {example_dir} log {log_dir}...")
             continue
 
         with open(os.path.join(config_path.replace("/config.json", ""), log_dir,f"evaluation_{args.evaluation_run}.json"), "r") as f:
@@ -158,7 +184,7 @@ for example_dir in example_dir_list:
         history = evaluation_dict["history"]
         evaluation = evaluation_dict["evaluations"]
         if len(evaluation) == 0:
-            print(f"No evaluation found for example {example_dir} log {log_dir}...")
+            print(f"[WARN] No evaluation found for example {example_dir} log {log_dir}...")
             continue
         evaluation_dict = {item["index"]: item for item in evaluation}
 
@@ -173,6 +199,13 @@ for example_dir in example_dir_list:
                     current_privacy_preserve_list.append(len(current_evaluation["leaked_items"]))         
                     current_behavior_list.append(current_evaluation["label"])
 
+                    if current_evaluation["label"] == "EXPLICIT_DENIAL":
+                        if "awareness_analysis" in current_evaluation:
+                            if "consent_label" in current_evaluation["awareness_analysis"]:
+                                if current_evaluation["awareness_analysis"]["consent_label"] == "YES":
+                                    current_behavior_list.append("CONSENT_REQUIRED")
+                                    
+
                     if "helpfulness_label" in current_evaluation:
                         if current_evaluation["helpfulness_label"] == "YES":
                             helpful_num += 1
@@ -181,7 +214,7 @@ for example_dir in example_dir_list:
                     else:
                         unhelpful_num += 1
                 else:
-                    print(f"{history[idx - 1]} in example {example_dir} log {log_dir} is not from the data sender")
+                    print(f"[WARN] {history[idx - 1]} in example {example_dir} log {log_dir} is not from the data sender")
 
         if set(current_behavior_list) == {"NO_RESPONSE"}:
             non_responsive_num += 1
@@ -196,29 +229,14 @@ for example_dir in example_dir_list:
         num_leak_action += current_num_leak_action
         num_unleak_fact += current_num_unleak_fact
         num_leak_fact += current_num_leak_fact
-        num_privacy_aware_action += count_item_num(current_behavior_list, "PRIVACY-AWARE")
-        num_privacy_unaware_action += count_item_num(current_behavior_list, "PRIVACY-UNAWARE")
         num_explicit_denial_action += count_item_num(current_behavior_list, "EXPLICIT_DENIAL")
         num_consent_required_action += count_item_num(current_behavior_list, "CONSENT_REQUIRED")
         num_other_action += count_item_num(current_behavior_list, "OTHER")
         num_no_response_action += count_item_num(current_behavior_list, "NO_RESPONSE")
 
-print(f"Number of leak actions: {num_leak_action}")
-print(f"Number of explicit denial actions: {num_explicit_denial_action}")
-print(f"Number of consent required actions: {num_consent_required_action}")
-print(f"Number of privacy-aware actions: {num_privacy_aware_action}")
-print(f"Number of privacy-unaware actions: {num_privacy_unaware_action}")
-print(f"Number of other actions: {num_other_action}")
-print(f"Number of no response actions: {num_no_response_action}")
-
-print("--------------------------------")
-print(f"Number of responsive examples: {responsive_num}")
-print(f"Number of non-responsive examples: {non_responsive_num}")
-print("--------------------------------")
-print(f"Number of helpful examples: {helpful_num}")
-print(f"Number of unhelpful examples: {unhelpful_num}")
-print("--------------------------------")
-
+# Unified printing of all results in markdown tables
+print_behavior_table(num_leak_action, num_explicit_denial_action, num_consent_required_action, num_other_action, num_no_response_action)
+print_example_stats(responsive_num, non_responsive_num, helpful_num, unhelpful_num)
+print_rate_table(num_explicit_denial_action, num_consent_required_action, num_leak_action, num_unleak_action)
 print_markdown_table(num_unleak_action, num_leak_action, num_unleak_fact, num_leak_fact, privacy_preserve_list)
-
 print_exp_result(args.example_folder, args.evaluation_run)
