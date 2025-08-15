@@ -1,4 +1,4 @@
-# Searching for Privacy Risks in LLM Agents via Simulation
+# [Searching for Privacy Risks in LLM Agents via Simulation](https://arxiv.org/abs/2508.10880)
 
 **Authors:** Yanzhe Zhang, Diyi Yang
 
