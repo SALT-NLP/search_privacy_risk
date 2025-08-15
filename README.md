@@ -173,10 +173,14 @@ python search_resample.py \
 If you use this framework in your research, please cite:
 
 ```bibtex
-@article{zhang2024searching,
-  title={Searching for Privacy Risks in LLM Agents via Simulation},
-  author={Zhang, Yanzhe and Yang, Diyi},
-  year={2024}
+@misc{zhang2025searchingprivacyrisksllm,
+      title={Searching for Privacy Risks in LLM Agents via Simulation}, 
+      author={Yanzhe Zhang and Diyi Yang},
+      year={2025},
+      eprint={2508.10880},
+      archivePrefix={arXiv},
+      primaryClass={cs.CR},
+      url={https://arxiv.org/abs/2508.10880}, 
 }
 ```
 
