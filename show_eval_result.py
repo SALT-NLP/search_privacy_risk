@@ -211,8 +211,6 @@ for example_dir in example_dir_list:
                             helpful_num += 1
                         else:
                             unhelpful_num += 1
-                    else:
-                        unhelpful_num += 1
                 else:
                     print(f"[WARN] {history[idx - 1]} in example {example_dir} log {log_dir} is not from the data sender")
 
