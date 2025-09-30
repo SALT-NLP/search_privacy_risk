@@ -123,16 +123,25 @@ class LiteLLMModel(BaseModelBackend):
         Returns:
             ChatCompletion: The response object in OpenAI's format.
         """
+        # print("Response 1: ", response)
+        # Build the base message dict
+        message_dict = {
+            "role": response.choices[0].message.role,
+            "content": response.choices[0].message.content,
+            "tool_calls": response.choices[0].message.tool_calls,
+        }
+        
+        # Add reasoning_content if it exists
+        if hasattr(response.choices[0].message, "reasoning_content") and response.choices[0].message.reasoning_content:
+            message_dict["reasoning_content"] = response.choices[0].message.reasoning_content
+        
+        # Construct the new ChatCompletion object
         openai_response = ChatCompletion.construct(
             id=response.id,
             choices=[
                 {
                     "index": response.choices[0].index,
-                    "message": {
-                        "role": response.choices[0].message.role,
-                        "content": response.choices[0].message.content,
-                        "tool_calls": response.choices[0].message.tool_calls
-                    },
+                    "message": message_dict,
                     "finish_reason": response.choices[0].finish_reason,
                 }
             ],

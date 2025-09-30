@@ -11,6 +11,66 @@ import numpy as np
 from utils import normalize_evaluation_idx, hash_directory
 import random
 
+def run_subprocess_with_python_check(cmd, shell=False, check=False, **kwargs):
+    """
+    Wrapper function for subprocess calls that checks if the command is a Python command
+    and replaces 'python' with the current Python interpreter if needed.
+    
+    Args:
+        cmd: Command to run (string or list)
+        shell: Whether to run with shell=True
+        check: Whether to check return code
+        **kwargs: Additional arguments to pass to subprocess
+    
+    Returns:
+        Result of subprocess.run() or subprocess.Popen()
+    """
+    if isinstance(cmd, str):
+        # Split command into parts for analysis
+        cmd_parts = cmd.split()
+        if len(cmd_parts) > 0 and cmd_parts[0] == 'python':
+            # Check if the Python file exists
+            if len(cmd_parts) > 1 and cmd_parts[1].endswith('.py'):
+                python_file = cmd_parts[1]
+                if os.path.exists(python_file):
+                    # Replace 'python' with current interpreter
+                    cmd_parts[0] = sys.executable
+                    cmd = ' '.join(cmd_parts)
+        
+        # For shell commands, return the modified command as string
+        if shell:
+            if 'preexec_fn' in kwargs:
+                return subprocess.Popen(cmd, shell=True, **kwargs)
+            else:
+                return subprocess.run(cmd, shell=True, check=check, **kwargs)
+        else:
+            # Convert back to list for non-shell execution
+            if 'preexec_fn' in kwargs:
+                return subprocess.Popen(cmd_parts, **kwargs)
+            else:
+                return subprocess.run(cmd_parts, check=check, **kwargs)
+    
+    elif isinstance(cmd, list):
+        # Handle list commands
+        if len(cmd) > 0 and cmd[0] == 'python':
+            # Check if the Python file exists
+            if len(cmd) > 1 and cmd[1].endswith('.py'):
+                python_file = cmd[1]
+                if os.path.exists(python_file):
+                    # Replace 'python' with current interpreter
+                    cmd[0] = sys.executable
+        
+        if 'preexec_fn' in kwargs:
+            return subprocess.Popen(cmd, shell=shell, **kwargs)
+        else:
+            return subprocess.run(cmd, shell=shell, check=check, **kwargs)
+    
+    # Fallback for other command types
+    if 'preexec_fn' in kwargs:
+        return subprocess.Popen(cmd, shell=shell, **kwargs)
+    else:
+        return subprocess.run(cmd, shell=shell, check=check, **kwargs)
+
 def checkpoint_with_rsync(src_folder: str, checkpoint_root: str, checkpoint_name: str = None):
     start_time = time.time()
     os.makedirs(checkpoint_root, exist_ok=True)
@@ -22,7 +82,7 @@ def checkpoint_with_rsync(src_folder: str, checkpoint_root: str, checkpoint_name
     dst_folder = os.path.join(checkpoint_root, checkpoint_name)
     
     # rsync command to copy folder recursively and preserve attributes
-    subprocess.run(["rsync", "-a", f"{src_folder}/", dst_folder], check=True)
+    run_subprocess_with_python_check(["rsync", "-a", f"{src_folder}/", dst_folder], check=True)
     
     end_time = time.time()
     print(f"Checkpoint completed in {end_time - start_time:.2f} seconds")
@@ -34,10 +94,10 @@ def restore_from_rsync_checkpoint(checkpoint_folder: str, target_folder: str):
     start_time = time.time()
     # Clean the target folder if it exists
     if os.path.exists(target_folder):
-        subprocess.run(["rm", "-rf", target_folder], check=True)
+        run_subprocess_with_python_check(["rm", "-rf", target_folder], check=True)
 
     # Copy checkpoint back to target
-    subprocess.run(["rsync", "-a", f"{checkpoint_folder}/", target_folder], check=True)
+    run_subprocess_with_python_check(["rsync", "-a", f"{checkpoint_folder}/", target_folder], check=True)
     
     end_time = time.time()
     print(f"Restore completed in {end_time - start_time:.2f} seconds")
@@ -173,7 +233,7 @@ def evaluate_the_best_run(iteration, next_dir_name, args):
         sim_cmd += f" --appless --num_processes {args.num_processes}"
 
     print(f"[RUNNING] {sim_cmd}")
-    ret = subprocess.run(sim_cmd, shell=True)
+    ret = run_subprocess_with_python_check(sim_cmd, shell=True)
     if ret.returncode != 0:
         print(f"[ERROR] Best example simulation failed.")
         return False
@@ -181,7 +241,7 @@ def evaluate_the_best_run(iteration, next_dir_name, args):
     # 4. Run evaluation.py for the best example
     eval_cmd = f"python evaluation.py --example_folder {os.path.join(best_results_dir, f'example_v{iteration}')} --search_mode"
     print(f"[RUNNING] {eval_cmd}")
-    ret = subprocess.run(eval_cmd, shell=True)
+    ret = run_subprocess_with_python_check(eval_cmd, shell=True)
     if ret.returncode != 0:
         print(f"[ERROR] Best example evaluation failed.")
         return False
@@ -191,7 +251,7 @@ def evaluate_the_best_run(iteration, next_dir_name, args):
     bank_dir = os.path.join("./search", next_dir_name)
     collect_cmd = f"python search_collect.py --search_folder {best_dir} --previous_version v{iteration} --goal attack --max_history_size {args.max_history_size} --bank_folder {bank_dir}"
     print(f"[RUNNING] {collect_cmd}")
-    ret = subprocess.run(collect_cmd, shell=True)
+    ret = run_subprocess_with_python_check(collect_cmd, shell=True)
     if ret.returncode != 0:
         print(f"[ERROR] Best example bank collection failed.")
         return False
@@ -497,7 +557,7 @@ def search_loop(checkpoint_folder: str, next_dir_name: str, command_template: li
                         break
 
                 try:
-                    p = subprocess.Popen(
+                    p = run_subprocess_with_python_check(
                         formatted_cmd,
                         shell=True,
                         preexec_fn=os.setsid

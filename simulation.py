@@ -91,7 +91,19 @@ if __name__ == "__main__":
                                                             "gpt-4.1", \
                                                             "gpt-4.1-mini", \
                                                             "gpt-4.1-nano", \
-                                                            "gpt-4o-mini"
+                                                            "gpt-4o-mini", \
+                                                            "hosted_vllm/Qwen/Qwen3-8B-AWQ", \
+                                                            "hosted_vllm/Qwen/Qwen3-32B-AWQ", \
+                                                            "hosted_vllm/Qwen/Qwen3-32B-AWQ-Thinking", \
+                                                            "hosted_vllm/Qwen/Qwen3-30B-A3B-Instruct-2507-FP8", \
+                                                            "hosted_vllm/openai/gpt-oss-20b", \
+                                                            "hosted_vllm/openai/gpt-oss-20b-low", \
+                                                            "hosted_vllm/openai/gpt-oss-20b-medium", \
+                                                            "hosted_vllm/openai/gpt-oss-20b-high", \
+                                                            "hosted_vllm/openai/gpt-oss-120b", \
+                                                            "hosted_vllm/openai/gpt-oss-120b-low", \
+                                                            "hosted_vllm/openai/gpt-oss-120b-medium", \
+                                                            "hosted_vllm/openai/gpt-oss-120b-high" \
                                                             ], \
                                                             default=["azure/gpt-4.1-mini-250414-13576", \
                                                                      "azure/gpt-4.1-mini-250414-13576", \

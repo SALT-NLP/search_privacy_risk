@@ -1,5 +1,6 @@
 import json
 import asyncio
+from contextlib import suppress
 from utils import parse_response, read_activities
 from dotenv import load_dotenv
 import argparse
@@ -734,22 +735,29 @@ async def main():
             log_dir_list = sorted(log_dir_list, key=lambda x: int(x.split("_")[-1]))
             
             for log_dir in log_dir_list:
-                task = evaluate_log(example_dir, log_dir, config_path, config, pbar, args.evaluation_run, dimension)
+                coro = evaluate_log(example_dir, log_dir, config_path, config, pbar, args.evaluation_run, dimension)
+                task = asyncio.create_task(coro)
                 tasks.append(task)
 
         # Add timeout and retry logic
         max_retries = 1
-        timeout = 300
+        timeout = 500
         for attempt in range(max_retries):
             try:
                 await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
                 break
             except asyncio.TimeoutError:
+                # IMPORTANT: cancel all tasks, or they keep running in the background
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                # Wait for all tasks to finish cancellation
+                with suppress(asyncio.CancelledError):
+                    await asyncio.gather(*tasks, return_exceptions=True)
                 if attempt < max_retries - 1:
                     print(f"\nTimeout occurred on attempt {attempt + 1}. Retrying...")
-                    # Reset progress bar and tasks
-                    pbar.n = 0
-                    pbar.refresh()
+                    # reset + rebuild tasks for retry
+                    pbar.reset(total=total_tasks * len(dimensions))
                     tasks = []
                     for example_dir in example_dir_list:
                         config_path = os.path.join(args.example_folder, example_dir, "config.json")
@@ -760,7 +768,8 @@ async def main():
                         log_dir_list = [item for item in log_dir_list if item.startswith("log_")]
                         log_dir_list = sorted(log_dir_list, key=lambda x: int(x.split("_")[-1]))
                         for log_dir in log_dir_list:
-                            task = evaluate_log(example_dir, log_dir, config_path, config, pbar, args.evaluation_run, dimension)
+                            coro = evaluate_log(example_dir, log_dir, config_path, config, pbar, args.evaluation_run, dimension)
+                            task = asyncio.create_task(coro)
                             tasks.append(task)
                 else:
                     print("\nMaximum retries reached. Some tasks may not have completed.")
@@ -768,9 +777,7 @@ async def main():
         print(f"Completed evaluation for dimension: {dimension}")
     
     pbar.close()
+    await cleanup_aiohttp()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    finally:
-        asyncio.run(cleanup_aiohttp())
+    asyncio.run(main())

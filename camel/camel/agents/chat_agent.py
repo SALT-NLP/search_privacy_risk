@@ -616,21 +616,23 @@ class ChatAgent(BaseAgent):
                 response_format,
                 self._get_full_tool_schemas(),
             )
+            # print(f"Response 1: {response}")
 
             if tool_call_requests := response.tool_call_requests:
                 # Process all tool calls
                 for tool_call_request in tool_call_requests:
-                    if (
-                        tool_call_request.tool_name
-                        in self._external_tool_schemas
-                    ):
-                        if external_tool_call_requests is None:
-                            external_tool_call_requests = []
-                        external_tool_call_requests.append(tool_call_request)
-                    else:
-                        tool_call_records.append(
-                            self._execute_tool(tool_call_request)
-                        )
+                    # if (
+                    #     tool_call_request.tool_name
+                    #     in self._external_tool_schemas
+                    # ):
+                    # Yanzhe: Always treat all tool calls as external tool calls
+                    if external_tool_call_requests is None:
+                        external_tool_call_requests = []
+                    external_tool_call_requests.append(tool_call_request)
+                    # else:
+                    #     tool_call_records.append(
+                    #         self._execute_tool(tool_call_request)
+                    #     )
 
                 # If we found external tool calls, break the loop
                 if external_tool_call_requests:
@@ -647,10 +649,11 @@ class ChatAgent(BaseAgent):
         self._format_response_if_needed(response, response_format)
 
         # Yanzhe: Skip adding empty message if external tool calls found
+        # Updated: Never record output messages with external tool calls
         if external_tool_call_requests:
             pass
-        else:
-            self._record_final_output(response.output_messages)
+        # else:
+        #     self._record_final_output(response.output_messages)
 
         return self._convert_to_chatagent_response(
             response,
@@ -719,18 +722,19 @@ class ChatAgent(BaseAgent):
             if tool_call_requests := response.tool_call_requests:
                 # Process all tool calls
                 for tool_call_request in tool_call_requests:
-                    if (
-                        tool_call_request.tool_name
-                        in self._external_tool_schemas
-                    ):
-                        if external_tool_call_requests is None:
-                            external_tool_call_requests = []
-                        external_tool_call_requests.append(tool_call_request)
-                    else:
-                        tool_call_record = await self._aexecute_tool(
-                            tool_call_request
-                        )
-                        tool_call_records.append(tool_call_record)
+                    # if (
+                    #     tool_call_request.tool_name
+                    #     in self._external_tool_schemas
+                    # ):
+                    # Yanzhe: Always treat all tool calls as external tool calls
+                    if external_tool_call_requests is None:
+                        external_tool_call_requests = []
+                    external_tool_call_requests.append(tool_call_request)
+                    # else:
+                    #     tool_call_record = await self._aexecute_tool(
+                    #         tool_call_request
+                    #     )
+                    #     tool_call_records.append(tool_call_record)
 
                 # If we found an external tool call, break the loop
                 if external_tool_call_requests:
@@ -747,10 +751,11 @@ class ChatAgent(BaseAgent):
         await self._aformat_response_if_needed(response, response_format)
 
         # Yanzhe: Skip adding empty message if external tool calls found
+        # Updated: Never record output messages with external tool calls
         if external_tool_call_requests:
             pass
-        else:
-            self._record_final_output(response.output_messages)
+        # else:
+        #     self._record_final_output(response.output_messages)
 
         return self._convert_to_chatagent_response(
             response,
@@ -807,6 +812,7 @@ class ChatAgent(BaseAgent):
             response = self.model_backend.run(
                 openai_messages, response_format, tool_schemas or None
             )
+            # print(f"Response 2: {response}")
         except Exception as exc:
             logger.error(
                 f"An error occurred while running model "
@@ -1103,11 +1109,18 @@ class ChatAgent(BaseAgent):
             if logprobs_info := handle_logprobs(choice):
                 meta_dict["logprobs_info"] = logprobs_info
 
+            # Yanzhe: add parsed reasoning content
+            content = choice.message.content or ""                
+            if hasattr(choice.message, "reasoning_content") and choice.message.reasoning_content:
+                if choice.message.reasoning_content.strip() not in content:
+                    content = "<think> " + choice.message.reasoning_content + " </think>" + " " + content
+                    content = content.strip()
+
             chat_message = BaseMessage(
                 role_name=self.role_name,
                 role_type=self.role_type,
                 meta_dict=meta_dict,
-                content=choice.message.content or "",
+                content=content,
                 parsed=getattr(choice.message, "parsed", None),
             )
 

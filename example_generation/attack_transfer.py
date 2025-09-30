@@ -173,13 +173,15 @@ async def main(examples_dir, original_dir, output_dir, requirements, max_retries
         print(f"\nFailed to generate {len(remaining_indices)} examples after {max_retries} attempts:")
         for idx in remaining_indices:
             print(f"- Example {idx}")
+    
+    await cleanup_aiohttp()
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--examples_dir", type=str, default="./example_search_train_A1")
-    parser.add_argument("--original_dir", type=str, default="./example_test")
-    parser.add_argument("--output_dir", type=str, default="./example_test_attack_A1")
+    parser.add_argument("--examples_dir", type=str, default="./example_search_train_7")
+    parser.add_argument("--original_dir", type=str, default="./example_search_test")
+    parser.add_argument("--output_dir", type=str, default="./example_search_test_attack_transfer")
     parser.add_argument("--requirement_choice", type=str, default="basic")
     args = parser.parse_args()
 
@@ -190,7 +192,4 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Invalid requirement choice: {args.requirement_choice}")
 
-    try:
-        asyncio.run(main(args.examples_dir, args.original_dir, args.output_dir, args.requirements))
-    finally:
-        asyncio.run(cleanup_aiohttp())
+    asyncio.run(main(args.examples_dir, args.original_dir, args.output_dir, args.requirements))

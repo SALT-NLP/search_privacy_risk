@@ -635,9 +635,7 @@ async def main():
         await process_defense_examples(example_dirs, previous_result_folder, new_example_folder, bank, args, pbar)
 
     pbar.close()
+    await cleanup_aiohttp()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    finally:
-        asyncio.run(cleanup_aiohttp())
+    asyncio.run(main())

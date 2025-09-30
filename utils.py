@@ -574,11 +574,14 @@ def parse_log_file(log_content, agent_id):
 
         if line.endswith("actions taken"):
             in_cycle = False
-            cycles.append(parse_cycle(current_cycle, agent_id, trigger))
+            if len(current_cycle) > 0:
+                cycles.append(parse_cycle(current_cycle, agent_id, trigger))
+            else:
+                print("Empty cycle:", line)
             current_cycle = []
     return cycles
 
-def load_action_cycles(log_dir):
+def load_action_cycles(log_dir, return_action_cycles=False):
     commands_path = os.path.join("/".join(log_dir.split("/")[:-1]), "commands.json")
     with open(commands_path, "r") as f:
         commands = json.load(f)
@@ -587,6 +590,9 @@ def load_action_cycles(log_dir):
     data_sender_user_id = []
     data_recipient_agent_id = []
     data_recipient_user_id = []
+    data_subject_agent_id = []
+    data_subject_user_id = []
+
     for command_idx, command in enumerate(commands):
         if "data_sender" in command[0]:
             current_agent_id = command[0].split("agent-id")[1].strip().split(" ")[0]
@@ -598,6 +604,11 @@ def load_action_cycles(log_dir):
             data_recipient_agent_id.append(current_agent_id)
             current_user_id = command[0].split("user-id")[1].strip().split(" ")[0]
             data_recipient_user_id.append(current_user_id)
+        elif "data_subject" in command[0]:
+            current_agent_id = command[0].split("agent-id")[1].strip().split(" ")[0]
+            data_subject_agent_id.append(current_agent_id)
+            current_user_id = command[0].split("user-id")[1].strip().split(" ")[0]
+            data_subject_user_id.append(current_user_id)
 
     combined_parsed_cycles = []
     for agent_id, user_id in zip(data_sender_agent_id, data_sender_user_id):
@@ -611,6 +622,13 @@ def load_action_cycles(log_dir):
             log_content = f.read()
             parsed_cycles = parse_log_file(log_content, user_id)
             combined_parsed_cycles.extend(parsed_cycles)
+    
+    if return_action_cycles:
+        for agent_id, user_id in zip(data_subject_agent_id, data_subject_user_id):
+            with open(os.path.join(log_dir, f"{agent_id}.log"), "r") as f:
+                log_content = f.read()
+                parsed_cycles = parse_log_file(log_content, user_id)
+                combined_parsed_cycles.extend(parsed_cycles)
 
     # sort by start_time
     combined_parsed_cycles.sort(key=lambda x: x["start_time"])
@@ -716,7 +734,7 @@ def read_activities(db_dir: str, return_action_cycles=False) -> List[str]:
 
     activities.sort(key=lambda x: datetime.strptime(x["timestamp"], "%Y-%m-%d %H:%M:%S.%f") if "." in x["timestamp"] else datetime.strptime(x["timestamp"], "%Y-%m-%d %H:%M:%S"))
 
-    action_cycles = load_action_cycles(db_dir)
+    action_cycles = load_action_cycles(db_dir, return_action_cycles)
 
     for activity_idx, activity in enumerate(activities):
         for cycle_idx, cycle in enumerate(action_cycles):
@@ -890,5 +908,5 @@ if __name__ == "__main__":
     # activities = read_activities("./simulation_results/example_search_train_resample/results/example_v1/example_16/log_0")
     # print("\n\n".join([json.dumps(activity, indent=4) for activity in activities]))
 
-    activities = read_activities("./simulation_results/example_search_train_resample/results/example_v1/example_16/log_0", True)
+    activities = read_activities("./simulation_results/example_search_train_resample_qwen/results/example_v1/example_16/log_0", True)
     print("\n\n".join([json.dumps(activity, indent=4) for activity in activities]))

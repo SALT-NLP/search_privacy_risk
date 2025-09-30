@@ -94,9 +94,13 @@ class LiteLLMConfig(BaseConfig):
     mock_response: Optional[str] = None
     custom_llm_provider: Optional[str] = None
     max_retries: Optional[int] = None
+    # Added by Yanzhe
     parallel_tool_calls: Optional[bool] = None
     drop_params: Optional[bool] = None
     reasoning_effort: Optional[str] = None
-
+    thinking: Optional[dict] = None
+    top_k: Optional[float] = None
+    chat_template_kwargs: Optional[dict] = None
+    api_base: Optional[str] = None
 
 LITELLM_API_PARAMS = {param for param in LiteLLMConfig.model_fields.keys()}

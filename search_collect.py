@@ -30,7 +30,7 @@ sync_openai = AzureOpenAI(
 @retry(max_retries=16, initial_delay=8, backoff_factor=1.41, exceptions=(OpenAIError, RateLimitError))
 def get_embedding_sync(text):
     response = litellm.embedding(
-        model="text-embedding-3-small",
+        model="azure/text-embedding-3-small",
         input=text
     )
     # Convert embedding to bytes and then to base64 string
@@ -41,7 +41,7 @@ def get_embedding_sync(text):
 @retry(max_retries=16, initial_delay=8, backoff_factor=1.41, exceptions=(OpenAIError, RateLimitError))
 async def get_embedding(text):
     response = await litellm.aembedding(
-        model="text-embedding-3-small",
+        model="azure/text-embedding-3-small",
         input=text
     )
     # Convert embedding to bytes and then to base64 string
@@ -54,7 +54,7 @@ async def get_important_history_items(history, sender_name, recipient_name, max_
     assert max_history_size > 0
     prompt = get_important_history_extraction_prompt(history, sender_name, recipient_name, max_history_size)
     response = await openai.chat.completions.create(
-        model="gpt-4.1-250414-13576",
+        model="azure/gpt-4.1-250414-13576",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.0
     )

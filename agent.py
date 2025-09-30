@@ -16,7 +16,9 @@ from agent_utils import (
     end_action_cycle,
     complete_task,
     get_multi_turn_system_message,
+    get_multi_turn_system_message_with_thinking,
     get_input_message,
+    get_input_message_with_thinking,
     get_tool_names
 )
 import json
@@ -82,6 +84,14 @@ class Agent(InprocAppClient):
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
         )
         self.deployment_name = deployment_name
+        self.thinking = False
+
+        # Qwen Thinking or gpt-oss Thinking
+        if ("Thinking" in self.deployment_name or "gpt-oss" in self.deployment_name) and "hosted_vllm" in self.deployment_name:
+            self.single_cycle_timeout = 300
+        else:
+            self.single_cycle_timeout = 120
+        self.single_cycle_max_steps = 50
 
         self.tasks = {}  # task_id -> Task object
 
@@ -95,9 +105,52 @@ class Agent(InprocAppClient):
                     "parallel_tool_calls": False,
                     "drop_params": True
                 }
-            elif "gpt" in self.deployment_name:
+            elif "gpt" in self.deployment_name and "oss" not in self.deployment_name:
                 model_config_dict = {
                     "temperature": 1.0,
+                    "parallel_tool_calls": False,
+                    "drop_params": True
+                }
+            elif "Qwen3-32B-AWQ" in self.deployment_name and "-Thinking" not in self.deployment_name:
+                 model_config_dict = {
+                    "temperature": 1.0,
+                    "presence_penalty": 1.0,
+                    "chat_template_kwargs": {"enable_thinking": False},
+                    "api_base": "http://0.0.0.0:8000/v1",
+                    "parallel_tool_calls": False,
+                    "drop_params": True
+                }
+            elif "Qwen3-32B-AWQ-Thinking" in self.deployment_name:
+                self.thinking = True
+                self.deployment_name = self.deployment_name.replace("-Thinking", "")
+                model_config_dict = {
+                    "temperature": 1.0,
+                    "presence_penalty": 1.0,
+                    "tool_choice": "auto",
+                    "chat_template_kwargs": {"enable_thinking": True},
+                    "api_base": "http://0.0.0.0:8000/v1",
+                    "parallel_tool_calls": False,
+                    "drop_params": True
+                }
+            elif "gpt-oss-20b" in self.deployment_name or "gpt-oss-120b" in self.deployment_name:
+                self.thinking = True
+
+                reasoning_effort = "low"
+                if "low" in self.deployment_name:
+                    reasoning_effort = "low"
+                    self.deployment_name = self.deployment_name.replace("-low", "")
+                elif "medium" in self.deployment_name:
+                    reasoning_effort = "medium"
+                    self.deployment_name = self.deployment_name.replace("-medium", "")
+                elif "high" in self.deployment_name:
+                    reasoning_effort = "high"
+                    self.deployment_name = self.deployment_name.replace("-high", "")
+
+                model_config_dict = {
+                    "temperature": 1.0,
+                    "reasoning_effort": reasoning_effort,
+                    "tool_choice": "auto",
+                    "api_base": "http://0.0.0.0:8000/v1",
                     "parallel_tool_calls": False,
                     "drop_params": True
                 }
@@ -105,10 +158,10 @@ class Agent(InprocAppClient):
                 raise NotImplementedError(f"Model {self.deployment_name} not supported")
             
             self.camel_model =  LiteLLMModel(
-                model_type=deployment_name,
+                model_type=self.deployment_name,
                 model_config_dict=model_config_dict
             )
-            custom_log(f"Camel model initialized with deployment name: {deployment_name}", self.log_file)
+            custom_log(f"Camel model initialized with deployment name: {self.deployment_name}", self.log_file)
             custom_log(f"Camel model config: {self.camel_model.model_config_dict}", self.log_file)
             custom_log(f"Camel model type: {self.camel_model.model_type}", self.log_file)
         else:
@@ -275,7 +328,7 @@ class Agent(InprocAppClient):
         custom_log(f"LLM prompt: {prompt}", self.log_file)
 
         response = litellm.completion(
-            model="gpt-4.1-mini",
+            model="azure/gpt-4.1-mini-250414-13576",
             messages=[{"role": "system", "content": prompt}],
             max_tokens=1000
         )
@@ -297,7 +350,7 @@ class Agent(InprocAppClient):
         custom_log(f"LLM prompt: {prompt}", self.log_file)
 
         response = litellm.completion(
-            model="gpt-4.1-mini",
+            model="azure/gpt-4.1-mini-250414-13576",
             messages=[{"role": "system", "content": prompt}],
             max_tokens=1000
         )
@@ -465,6 +518,45 @@ class Agent(InprocAppClient):
 
     def _take_multi_turn_action(self, task_id: str, last_action_time: str, current_trigger_time: str, trigger_type: Optional[str] = None, trigger_content: Optional[str] = None) -> Optional[str]:
         """Generate and take actions based on the task goal by multi-turn conversation"""
+
+        def validate_tool_call_parameters(tool_call_request: ToolCallRequest, tools_schemas: dict) -> bool:
+            """Validate tool call parameters against the tool schema.
+            Only checks that parameter names exist in the schema properties.
+            
+            Args:
+                tool_call_request: The tool call request to validate
+                tools_schemas: Dictionary of tool schemas
+                
+            Returns:
+                bool: True if valid, False otherwise
+            """
+            tool_name = tool_call_request.tool_name
+            args = tool_call_request.args
+            
+            if tool_name not in tools_schemas:
+                return False
+            
+            try:
+                # Get the schema for this tool
+                tool_schema = tools_schemas[tool_name]
+                parameters_schema = tool_schema["function"]["parameters"]
+                
+                # Get the allowed parameter names from the schema
+                allowed_params = set(parameters_schema.get("properties", {}).keys())
+                
+                # Check that all provided parameters are in the schema
+                provided_params = set(args.keys())
+                invalid_params = provided_params - allowed_params
+                
+                if invalid_params:
+                    custom_log(f"[VALIDATION ERROR] Tool '{tool_name}' received invalid parameters: {invalid_params}", self.log_file)
+                    return False
+                
+                return True
+            except Exception as e:
+                custom_log(f"[VALIDATION ERROR] Unexpected error validating tool '{tool_name}': {e}", self.log_file)
+                return False
+
         def tool_call_to_function_call(tool_call_request: ToolCallRequest) -> dict:
             custom_log(f"Tool call to function call: {tool_call_request}", self.log_file)
             app_name = tool_call_request.tool_name.split("_")[0]
@@ -527,7 +619,7 @@ class Agent(InprocAppClient):
             return agent._record_tool_calling(func_name, args, result, tool_call_id)
         
         # Timeout decorator might not work properly
-        @timeout_decorator.timeout(120, timeout_exception=TimeoutError)
+        @timeout_decorator.timeout(self.single_cycle_timeout, timeout_exception=TimeoutError)
         def agent_step_with_tool_call(agent: ChatAgent, input_message: str) -> None:
             think_step = True
             task_completed = False
@@ -536,20 +628,59 @@ class Agent(InprocAppClient):
             agent_step_count = 0
 
             while True:
-                if think_step:
-                    # At the thinking step, force the model to think
-                    agent.model_backend.current_model.model_config_dict["tool_choice"] = {"type": "function", "function": {"name": "think"}}
-                    response = agent.step(input_message)
-                    del agent.model_backend.current_model.model_config_dict["tool_choice"]
+                if self.thinking:
+                    try:
+                        response = agent.step(input_message)
+                    except json.JSONDecodeError as e:
+                        custom_log(f"JSONDecodeError: {e}", self.log_file)
+                        continue
                 else:
-                    # At the action step, force the model to call the tool
-                    agent.model_backend.current_model.model_config_dict["tool_choice"] = "required"
-                    response = agent.step(input_message)
-                    del agent.model_backend.current_model.model_config_dict["tool_choice"]
+                    if think_step:
+                        # At the thinking step, force the model to think
+                        agent.model_backend.current_model.model_config_dict["tool_choice"] = {"type": "function", "function": {"name": "think"}}
+                        try:
+                            response = agent.step(input_message)
+                        except json.JSONDecodeError as e:
+                            custom_log(f"JSONDecodeError: {e}", self.log_file)
+                            continue
+                        del agent.model_backend.current_model.model_config_dict["tool_choice"]
+                    else:
+                        # At the action step, force the model to call the tool
+                        agent.model_backend.current_model.model_config_dict["tool_choice"] = "required"
+                        try:
+                            response = agent.step(input_message)
+                        except json.JSONDecodeError as e:
+                            custom_log(f"JSONDecodeError: {e}", self.log_file)
+                            continue
+                        del agent.model_backend.current_model.model_config_dict["tool_choice"]
 
                 custom_log(f"Response: {response}", self.log_file)
 
                 cycle_finished = False
+                if not isinstance(response.info["external_tool_call_requests"], list):
+                    custom_log(f"External tool call requests is not a list: {response.info['external_tool_call_requests']}", self.log_file)
+                    continue
+
+                if len(response.info["external_tool_call_requests"]) == 0:
+                    custom_log(f"External tool call requests is empty: {response.info['external_tool_call_requests']}", self.log_file)
+                    continue
+
+                invalid_tool_call = False
+                for tool_call_request in response.info["external_tool_call_requests"]:
+                    if tool_call_request.tool_name not in agent._external_tool_schemas:
+                        custom_log(f"Tool call request tool name is not in app spec dict: {tool_call_request.tool_name}", self.log_file)
+                        invalid_tool_call = True
+                        break
+
+                    # Validate tool call parameters using app spec dict
+                    if not validate_tool_call_parameters(tool_call_request, agent._external_tool_schemas):
+                        custom_log(f"Tool call request parameters are invalid: {tool_call_request.tool_name}", self.log_file)
+                        invalid_tool_call = True
+                        break
+
+                if invalid_tool_call:
+                    continue
+
                 for tool_call_request in response.info["external_tool_call_requests"]:
                     execute_tool(agent, tool_call_request)
                     if tool_call_request.tool_name == "end_action_cycle":
@@ -562,7 +693,7 @@ class Agent(InprocAppClient):
                 think_step = not think_step
                 agent_step_count += 1
 
-                if (datetime.now() - initial_time).total_seconds() > 120 or agent_step_count > 50:
+                if (datetime.now() - initial_time).total_seconds() > self.single_cycle_timeout or agent_step_count > self.single_cycle_max_steps:
                     custom_log(f"Timeout in action cycle, time taken: {(datetime.now() - initial_time).total_seconds()}, agent step count: {agent_step_count}", self.log_file)
                     print(f"Timeout in action cycle, time taken: {(datetime.now() - initial_time).total_seconds()}, agent step count: {agent_step_count}")
                     break
@@ -586,7 +717,11 @@ class Agent(InprocAppClient):
         
         app_spec_dict = {}
 
-        extra_tools = [think, end_action_cycle, complete_task]
+        if self.thinking:
+            extra_tools = [end_action_cycle, complete_task]
+        else:
+            extra_tools = [think, end_action_cycle, complete_task]
+
         for tool in extra_tools:
             tool_schema = get_openai_tool_schema(tool)
 
@@ -603,8 +738,12 @@ class Agent(InprocAppClient):
             app_spec = app_spec["api_spec"]
             for key, value in app_spec.items():
                 app_spec_dict[key] = value
-                
-        system_message = get_multi_turn_system_message(self.memory, task.goal, task.start_time, task.time_limit)
+
+        if self.thinking:
+            system_message = get_multi_turn_system_message_with_thinking(self.memory, task.goal, task.start_time, task.time_limit)
+        else:       
+            system_message = get_multi_turn_system_message(self.memory, task.goal, task.start_time, task.time_limit)
+
         agent = ChatAgent(model=self.camel_model, system_message=system_message)
 
         # Load trajectory from previous action cycles
@@ -619,7 +758,11 @@ class Agent(InprocAppClient):
         tool_names = get_tool_names(agent._external_tool_schemas)
         custom_log(f"Tool names: {tool_names}", self.log_file)
 
-        input_message = get_input_message(last_action_time, current_trigger_time, trigger_type, trigger_content, tool_names)
+        if self.thinking:
+            input_message = get_input_message_with_thinking(last_action_time, current_trigger_time, trigger_type, trigger_content, tool_names)
+        else:
+            input_message = get_input_message(last_action_time, current_trigger_time, trigger_type, trigger_content, tool_names)
+
         task_completed = agent_step_with_tool_call_with_retry(agent, input_message)
 
         custom_log("Agent Memory:", self.log_file)
