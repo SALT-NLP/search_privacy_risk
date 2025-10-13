@@ -35,15 +35,20 @@ We provide simulation trajectories and search trajectories on [Huggingface](http
 ### Directory Structure
 
 ```
-├── agent.py                  # Core agent implementation
-├── agent_utils.py            # Agent prompts and utilities
-├── simulation.py             # Simulation orchestration
-├── evaluation.py             # Privacy evaluation framework
-├── search_control.py         # Main search algorithm
-├── applications/             # Application-specific modules
-├── example_generation/       # Training and test examples
-├── search/                   # Example search results
-└── camel/                    # A copy of the Camel framework, slightly modified
+├── agent.py                        # Core agent implementation
+├── agent_utils.py                  # Agent prompts and utilities
+├── simulation.py                   # Simulation orchestration
+├── evaluation.py                   # Privacy evaluation framework
+├── search_control.py               # Main search algorithm
+├── applications/                   # Application-specific modules
+├── example_generation/             # Training and test examples
+   ├── example_test/                # Testing-1000
+   ├── example_search_train/        # Training-5 (A0D0)
+   ├── example_search_train_*/      # Searched results based on Training-5 (A1D0, A1D1, A2D1, A2D2)
+   ├── example_test_*/              # Cross-scenario transferred results, using ICL or ICL + SG
+   ├── example_search_train_test    # For quick testing of search, only one example
+├── search/                         # Example search results
+└── camel/                          # A copy of the Camel framework, slightly modified
 ```
 
 ## Installation
